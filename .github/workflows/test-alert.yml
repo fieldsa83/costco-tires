@@ -1,0 +1,19 @@
+name: Test alert
+
+on:
+  workflow_dispatch:   # manual only
+
+permissions:
+  issues: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Open a test issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh issue create --title "Test alert (close me)" \
+            --body "@${{ github.repository_owner }} This is a test of the Costco tire alert. If you got this on your phone, it works. Close this issue."
