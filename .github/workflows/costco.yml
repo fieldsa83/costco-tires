@@ -1,0 +1,51 @@
+name: Costco tire check
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # every 15 min (UTC; GitHub may run a few min late)
+  workflow_dispatch:          # lets you click "Run workflow" to test
+
+permissions:
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check availability
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          BASE="https://api.waitwhile.com/v2/public/visits/costcotire-01213/availability"
+          IDS="serviceDuration=2700&resourceIds=JozOBUXIJXgIwnO0wcvA&serviceIds=PDm6orSKk154ebNSq7nQ&serviceIds=8Npus5b4JBG4Xsg4EWNc"
+
+          # Titles of open alert issues (an open issue = already alerted for that date)
+          OPEN=$(gh issue list --state open --json title --jq '.[].title')
+
+          for DAY in 2026-11-10 2026-11-11 2026-11-16 2026-11-17 2026-11-18 2026-11-19 2026-11-20; do
+            NEXT=$(date -I -d "$DAY + 1 day")
+            URL="$BASE?fromDate=${DAY}T00%3A00&toDate=${NEXT}T00%3A00&$IDS"
+
+            RESP=$(curl -sf -A "Mozilla/5.0" "$URL") || { echo "$DAY: request failed"; continue; }
+            # Keep slots at 12:00 or later ("date" looks like 2026-11-16T13:30) that have a spot
+            SLOTS=$(echo "$RESP" | jq -c '[.[] | select(.date[11:16] >= "12:00" and (.numAvailableSpots // 0) > 0)]')
+            COUNT=$(echo "$SLOTS" | jq 'length')
+            TITLE="Tire spot open: $DAY"
+
+            if [ "$COUNT" -gt 0 ]; then
+              if echo "$OPEN" | grep -Fxq "$TITLE"; then
+                echo "$DAY: still open ($COUNT slots), already alerted"
+              else
+                echo "$DAY: $COUNT slots open, opening issue"
+                gh issue create --title "$TITLE" --body "@${{ github.repository_owner }} $COUNT slot(s) open at Costco Vaudreuil on $DAY. Go book it, then close this issue.
+
+          \`\`\`json
+          $(echo "$SLOTS" | jq .)
+          \`\`\`"
+              fi
+            else
+              echo "$DAY: no availability"
+            fi
+            sleep 2
+          done
